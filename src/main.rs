@@ -64,7 +64,6 @@ async fn main(spawner: Spawner) {
             continue;
         };
 
-        log::info!("Barometer Power Status: {:?}", pwr.mode);
         log::info!("{}, {}", measurement.pressure, measurement.temperature);
         imu_ticker.next().await;
     }
