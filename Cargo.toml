@@ -19,10 +19,7 @@ embassy-rp = { version = "0.10.0", features = [
   "rp235xa",
 ] }
 embassy-time = "0.5.1"
-embassy-usb = "0.6.0"
-embassy-usb-logger = "0.6.0"
-embassy-futures = "0.1.2"
-static_cell = "2.0"
+usb_console = { path = "../usb_console" }
 
 bmp388-embedded = { version = "0.1", features = ["async"] }
 
