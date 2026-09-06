@@ -9,27 +9,27 @@ use bmp388_embedded::{
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::i2c::{self, InterruptHandler as I2CInterruptHandler};
-use embassy_rp::peripherals::I2C1;
+use embassy_rp::peripherals::I2C0;
 use embassy_time::{Delay, Duration, Ticker};
 use panic_probe as _;
 
 bind_interrupts!(struct Irqs {
-    I2C1_IRQ => I2CInterruptHandler<I2C1>;
+    I2C0_IRQ => I2CInterruptHandler<I2C0>;
 });
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-    spawner.must_spawn(usb::usb_setup(p.USB));
+    spawner.spawn(usb::usb_setup(p.USB).unwrap());
 
     // IMU via i2c
-    let sda = p.PIN_2;
-    let scl = p.PIN_3;
+    let sda = p.PIN_12;
+    let scl = p.PIN_13;
 
     log::info!("set up i2c ");
     let mut i2c_config = i2c::Config::default();
     i2c_config.frequency = 400_000;
-    let i2c = i2c::I2c::new_async(p.I2C1, scl, sda, Irqs, i2c_config);
+    let i2c = i2c::I2c::new_async(p.I2C0, scl, sda, Irqs, i2c_config);
 
     let baro_result = Bmp388Async::new(i2c, Delay, Address::Secondary).await;
 

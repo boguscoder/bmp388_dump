@@ -4,13 +4,25 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::{Builder, Config};
+use static_cell::StaticCell;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
+type UsbDriver = Driver<'static, USB>;
+type UsbDevice = embassy_usb::UsbDevice<'static, UsbDriver>;
+
+async fn usb_log_task(class: CdcAcmClass<'static, UsbDriver>) {
+    embassy_usb_logger::with_class!(1024, log::LevelFilter::Info, class).await
+}
+
+async fn usb_run_task(mut dev: UsbDevice) {
+    dev.run().await;
+}
+
 #[embassy_executor::task]
-pub async fn usb_setup(p: embassy_rp::peripherals::USB) {
+pub async fn usb_setup(p: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>) {
     let driver = Driver::new(p, Irqs);
 
     let mut config = Config::new(0xc0de, 0xcafe);
@@ -20,22 +32,27 @@ pub async fn usb_setup(p: embassy_rp::peripherals::USB) {
     config.max_power = 100;
     config.max_packet_size_0 = 64;
 
-    let mut config_descriptor = [0; 256];
-    let mut bos_descriptor = [0; 256];
-    let mut control_buf = [0; 64];
-    let mut logger_state = State::new();
-    let mut builder = Builder::new(
-        driver,
-        config,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut [], // no msos descriptors
-        &mut control_buf,
-    );
-    let logger_class = CdcAcmClass::new(&mut builder, &mut logger_state, 64);
-    let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Info, logger_class);
-    let mut usb = builder.build();
-    let usb_fut = usb.run();
+    let mut builder = {
+        static CONFIG_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
+        static BOS_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
+        static CONTROL_BUF: StaticCell<[u8; 64]> = StaticCell::new();
 
-    join(usb_fut, log_fut).await;
+        Builder::new(
+            driver,
+            config,
+            CONFIG_DESCRIPTOR.init([0; 256]),
+            BOS_DESCRIPTOR.init([0; 256]),
+            &mut [],
+            CONTROL_BUF.init([0; 64]),
+        )
+    };
+
+    let logger_class = {
+        static STATE: StaticCell<State> = StaticCell::new();
+        let state = STATE.init(State::new());
+        CdcAcmClass::new(&mut builder, state, 64)
+    };
+
+    let usb = builder.build();
+    join(usb_run_task(usb), usb_log_task(logger_class)).await;
 }
